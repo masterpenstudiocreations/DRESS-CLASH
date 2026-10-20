@@ -1,0 +1,8 @@
+{
+  "name": "DRESS CLASH",
+  "description": "Juego de peleas 2D estilo Neo Geo / KOF 2002. Roster humano de élite, 7 estilos marciales de gala, 7 escenarios y editor de personajes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
