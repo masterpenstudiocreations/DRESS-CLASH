@@ -1,8 +1,27 @@
 import { ActiveFighter } from '../types/fighter';
+import { buildFor, drawFighterRig, shade } from './fighterArt';
+import { poseForFighter, solve } from './fighterRig';
+
+// Pixel-art pipeline geometry. The rig is drawn at 1x into a HI buffer, downsampled by PX into a
+// LO buffer (so it reads like a 2x Neo Geo sprite), thresholded, outlined and blitted back up.
+const PX = 2;
+const HI_W = 380, HI_H = 300;          // rig space buffer
+const HI_OX = 190, HI_OY = 256;        // ground-contact origin inside HI
+const LO_W = HI_W / PX, LO_H = HI_H / PX;
 
 export class CharacterRenderer {
+  /**
+   * true  -> use the static illustrated PNGs (old behaviour, transform-animated)
+   * false -> use the animated skeletal pixel-art rig (default)
+   */
+  public static useIllustratedSprites = false;
+
   // Pre-cached high-resolution Masterpiece transparent sprites
   private static imageCache = new Map<string, HTMLImageElement>();
+
+  private static hi: HTMLCanvasElement | null = null;
+  private static lo: HTMLCanvasElement | null = null;
+  private static ghost: HTMLCanvasElement | null = null;
 
   // Render high-fidelity, masterpiece-quality fighter with Arc System Works / SNK aesthetic
   // 100% transparent cutout - ZERO rectangular box, ZERO background interference
@@ -17,29 +36,26 @@ export class CharacterRenderer {
     // 1. Dynamic Contact Shadow on the Floor
     this.drawContactShadow(ctx, fighter, groundY);
 
-    // 2. Dash / Roll Afterimages (KOF 2002 Ghost Trails)
-    if (fighter.state === 'DASH_FWD' || fighter.inMaxMode || fighter.state === 'ROLL_FWD' || fighter.state === 'ROLL_BACK') {
-      this.drawAfterimage(ctx, fighter, groundY);
-    }
+    const legacy = this.useIllustratedSprites && !!fighter.definition.spriteUrl;
 
-    // 3. Transform to Fighter Space (Origin at ground contact point)
-    ctx.translate(fighter.x, groundY - fighter.y);
+    // 2. Transform to Fighter Space (Origin at ground contact point, snapped to the sprite pixel grid)
+    ctx.translate(Math.round(fighter.x / PX) * PX, Math.round((groundY - fighter.y) / PX) * PX);
     if (fighter.facing === -1) {
       ctx.scale(-1, 1);
     }
 
-    // 4. MAX Mode Fiery Kinetic Energy Aura
+    // 3. MAX Mode Fiery Kinetic Energy Aura
     if (fighter.inMaxMode) {
       this.drawMaxAura(ctx, fighter);
     }
 
-    // 5. Draw Avatar: Prefer Masterpiece High-Definition Transparent Sprite; Fallback to Vector Body while loading
+    // 4. Draw Avatar
     let rendered = false;
-    if (fighter.definition.spriteUrl) {
+    if (legacy) {
       rendered = this.drawMasterpieceSprite(ctx, fighter);
     }
     if (!rendered) {
-      this.drawDetailedFighterBody(ctx, fighter);
+      this.drawRigFighter(ctx, fighter);
     }
 
     // 6. Optional Hitbox & Hurtbox Overlay for Training Lab
@@ -99,25 +115,228 @@ export class CharacterRenderer {
     ctx.restore();
   }
 
-  // --- AFTERIMAGE GHOST TRAIL (KOF 2002 DASH & EVASIVE ROLL) ---
-  private static drawAfterimage(ctx: CanvasRenderingContext2D, fighter: ActiveFighter, groundY: number) {
-    ctx.save();
-    ctx.translate(fighter.x - fighter.vx * 2.8, groundY - fighter.y);
-    if (fighter.facing === -1) {
-      ctx.scale(-1, 1);
+  // --- NEO GEO STYLE SKELETAL PIXEL-ART FIGHTER ---
+  private static getBuffers() {
+    if (!this.hi) {
+      this.hi = document.createElement('canvas');
+      this.hi.width = HI_W; this.hi.height = HI_H;
+      this.lo = document.createElement('canvas');
+      this.lo.width = LO_W; this.lo.height = LO_H;
+      this.ghost = document.createElement('canvas');
+      this.ghost.width = LO_W; this.ghost.height = LO_H;
     }
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = fighter.inMaxMode ? '#f59e0b' : '#38bdf8';
+    return { hi: this.hi!, lo: this.lo!, ghost: this.ghost! };
+  }
 
-    // Athletic full-body silhouette in motion
-    if (fighter.state === 'ROLL_FWD' || fighter.state === 'ROLL_BACK') {
+  private static drawRigFighter(ctx: CanvasRenderingContext2D, fighter: ActiveFighter) {
+    const { hi, lo, ghost } = this.getBuffers();
+    const hctx = hi.getContext('2d')!;
+    const lctx = lo.getContext('2d', { willReadFrequently: true })!;
+    const def = fighter.definition;
+    const pal = fighter.paletteIndex === 0 ? def.palette : def.alternatePalette;
+    const build = buildFor(def.dressCode);
+
+    // ---- 1. pose + skeleton
+    const pose = poseForFighter(fighter, def.dressCode === 'Casual');
+    const sk = solve(pose, build);
+    const localVx = fighter.vx * fighter.facing;
+    const wind = Math.max(-14, Math.min(14, -localVx * 1.6 + (fighter.state === 'ATTACK' ? -4 : 0)));
+
+    // ---- 2. rig into HI buffer
+    hctx.setTransform(1, 0, 0, 1, 0, 0);
+    hctx.clearRect(0, 0, HI_W, HI_H);
+    hctx.translate(HI_OX, HI_OY);
+    drawFighterRig(hctx, sk, def.dressCode, pal, { time: fighter.stateFrame, wind, speed: Math.min(1, Math.abs(localVx) / 10) });
+    hctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // ---- 3. cel lighting (stage-style top light, hard bottom shadow)
+    hctx.globalCompositeOperation = 'source-atop';
+    const lg = hctx.createLinearGradient(0, HI_OY - 230, 0, HI_OY + 4);
+    lg.addColorStop(0, 'rgba(255,244,225,0.20)');
+    lg.addColorStop(0.45, 'rgba(255,255,255,0)');
+    lg.addColorStop(0.75, 'rgba(8,10,40,0.16)');
+    lg.addColorStop(1, 'rgba(8,10,40,0.34)');
+    hctx.fillStyle = lg;
+    hctx.fillRect(0, 0, HI_W, HI_H);
+    // cool rim from behind the fighter
+    const rg = hctx.createLinearGradient(HI_OX - 60, 0, HI_OX + 60, 0);
+    rg.addColorStop(0, 'rgba(70,120,255,0.20)');
+    rg.addColorStop(0.35, 'rgba(70,120,255,0)');
+    rg.addColorStop(1, 'rgba(255,210,150,0.10)');
+    hctx.fillStyle = rg;
+    hctx.fillRect(0, 0, HI_W, HI_H);
+
+    if (fighter.inMaxMode) {
+      hctx.fillStyle = 'rgba(255,120,20,0.20)';
+      hctx.fillRect(0, 0, HI_W, HI_H);
+    }
+    if ((fighter.state === 'HIT' || fighter.state === 'HIT_AIR') && fighter.stateFrame < 7) {
+      hctx.fillStyle = fighter.stateFrame < 3 ? 'rgba(255,255,255,0.78)' : 'rgba(255,70,70,0.28)';
+      hctx.fillRect(0, 0, HI_W, HI_H);
+    }
+    if (fighter.state === 'GUARD_CRUSH' && fighter.stateFrame % 6 < 3) {
+      hctx.fillStyle = 'rgba(255,40,40,0.3)';
+      hctx.fillRect(0, 0, HI_W, HI_H);
+    }
+    if (fighter.invincibleTimer > 0 && fighter.state === 'WAKE_UP' && fighter.stateFrame % 4 < 2) {
+      hctx.fillStyle = 'rgba(255,255,255,0.35)';
+      hctx.fillRect(0, 0, HI_W, HI_H);
+    }
+    hctx.globalCompositeOperation = 'source-over';
+
+    // ---- 4. downsample -> threshold -> quantize -> outline + rim light
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.clearRect(0, 0, LO_W, LO_H);
+    lctx.imageSmoothingEnabled = true;
+    lctx.imageSmoothingQuality = 'high';
+    lctx.drawImage(hi, 0, 0, LO_W, LO_H);
+
+    const img = lctx.getImageData(0, 0, LO_W, LO_H);
+    const d = img.data;
+    const src = new Uint8ClampedArray(d);
+    const solid = new Uint8Array(LO_W * LO_H);
+    for (let i = 0; i < solid.length; i++) {
+      solid[i] = src[i * 4 + 3] >= 110 ? 1 : 0;
+    }
+    const Q = 18;
+    for (let y = 0; y < LO_H; y++) {
+      for (let x = 0; x < LO_W; x++) {
+        const i = y * LO_W + x;
+        const o = i * 4;
+        if (solid[i]) {
+          let r = Math.round(src[o] / Q) * Q;
+          let g = Math.round(src[o + 1] / Q) * Q;
+          let b = Math.round(src[o + 2] / Q) * Q;
+          const up = y > 0 ? solid[i - LO_W] : 0;
+          const lf = x > 0 ? solid[i - 1] : 0;
+          const dn = y < LO_H - 1 ? solid[i + LO_W] : 0;
+          const rt = x < LO_W - 1 ? solid[i + 1] : 0;
+          if (!up || !lf) { r += 26; g += 26; b += 30; }       // top-left rim light
+          else if (!dn || !rt) { r -= 22; g -= 22; b -= 16; }  // bottom-right core shadow
+          d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+        } else {
+          const near =
+            (y > 0 && solid[i - LO_W]) || (y < LO_H - 1 && solid[i + LO_W]) ||
+            (x > 0 && solid[i - 1]) || (x < LO_W - 1 && solid[i + 1]);
+          if (near) { d[o] = 9; d[o + 1] = 7; d[o + 2] = 18; d[o + 3] = 255; }
+          else d[o + 3] = 0;
+        }
+      }
+    }
+    lctx.putImageData(img, 0, 0);
+
+    // ---- 5. afterimages (KOF dash / roll / MAX trails)
+    const trail = fighter.state === 'DASH_FWD' || fighter.state === 'DASH_BACK' || fighter.inMaxMode ||
+      fighter.state === 'ROLL_FWD' || fighter.state === 'ROLL_BACK';
+    ctx.imageSmoothingEnabled = false;
+    if (trail) {
+      const gctx = ghost.getContext('2d')!;
+      gctx.setTransform(1, 0, 0, 1, 0, 0);
+      gctx.clearRect(0, 0, LO_W, LO_H);
+      gctx.globalCompositeOperation = 'source-over';
+      gctx.drawImage(lo, 0, 0);
+      gctx.globalCompositeOperation = 'source-in';
+      gctx.fillStyle = fighter.inMaxMode ? '#ff8a1f' : '#38bdf8';
+      gctx.fillRect(0, 0, LO_W, LO_H);
+      gctx.globalCompositeOperation = 'source-over';
+      const step = Math.max(10, Math.min(34, Math.abs(fighter.vx) * 3.4 + 10));
+      for (let n = 3; n >= 1; n--) {
+        ctx.save();
+        ctx.globalAlpha = 0.16 + (4 - n) * 0.07;
+        ctx.drawImage(ghost, -HI_OX - Math.round(step * n / PX) * PX, -HI_OY, HI_W, HI_H);
+        ctx.restore();
+      }
+    }
+
+    // ---- 6. blit sprite up with nearest-neighbour
+    ctx.drawImage(lo, -HI_OX, -HI_OY, HI_W, HI_H);
+
+    // ---- 7. strike effects drawn crisp on top, anchored to the real striking limb
+    if (fighter.state === 'ATTACK' && fighter.currentMove && fighter.movePhase === 'ACTIVE') {
+      const m = fighter.currentMove;
+      const id = m.id;
+      let type: 'punch' | 'kick' | 'slash' | 'counter' = 'counter';
+      if (id.includes('5a') || id.includes('5c')) type = 'punch';
+      else if (id.includes('5b') || id.includes('5d') || id.includes('_k')) type = 'kick';
+      else if (id.includes('2d')) type = 'slash';
+      const tips = type === 'punch' || id.includes('qcf_p') || id.includes('hcf') || id.includes('super') || id.includes('max')
+        ? [sk.fHand, sk.rHand] : [sk.fAnkle, sk.rAnkle, sk.fHand, sk.rHand];
+      let tip = tips[0];
+      for (const t of tips) if (t[0] > tip[0]) tip = t;
+      this.drawSwoosh(ctx, tip, type, fighter.inMaxMode, fighter.definition.dressCode, fighter.moveFrameCounter);
+      if (id.includes('super') || id.includes('max') || id.includes('qcf_p')) {
+        this.drawMartialStrikeFX(ctx, (tip[0] + 22) * 2, tip[1], 'counter', fighter.inMaxMode, fighter.definition.dressCode);
+      }
+    }
+    if (fighter.state === 'BLOCK_STAND') this.drawGuardEnergyShield(ctx, 46, -118, 44);
+    else if (fighter.state === 'BLOCK_CROUCH') this.drawGuardEnergyShield(ctx, 44, -66, 36);
+    if (fighter.state === 'GUARD_CRUSH') this.drawStunStars(ctx, fighter, sk.headC);
+  }
+
+  private static styleColor(dress: string, max: boolean): string {
+    switch (dress) {
+      case 'Casual': return max ? '#ff2a4d' : '#fbbf24';
+      case 'Smart Casual': return max ? '#ff3db8' : '#67e8f9';
+      case 'Semi Formal': return max ? '#fb923c' : '#e2e8f0';
+      case 'Coctel': return max ? '#34d399' : '#6ee7b7';
+      case 'Formal': return max ? '#ff5a1f' : '#facc15';
+      case 'Black Tie': return max ? '#d946ef' : '#f1f5f9';
+      case 'White Tie': return max ? '#f472b6' : '#60a5fa';
+      default: return max ? '#ff0055' : '#00e5ff';
+    }
+  }
+
+  // crescent motion trail ending at the striking limb
+  private static drawSwoosh(
+    ctx: CanvasRenderingContext2D, tip: [number, number], type: string, max: boolean, dress: string, frame: number
+  ) {
+    const col = this.styleColor(dress, max);
+    const kick = type === 'kick' || type === 'slash';
+    const len = kick ? 74 : 58;
+    const tail: [number, number] = [tip[0] - len, tip[1] + (kick ? 34 : 14)];
+    const ctrl: [number, number] = [tip[0] - len * 0.35, tip[1] - (kick ? 36 : 22)];
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = Math.max(0.35, 1 - frame * 0.22);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [w, c, a] of [[13, col, 0.35], [7, col, 0.8], [3, '#ffffff', 1]] as [number, string, number][]) {
+      ctx.strokeStyle = c;
+      ctx.lineWidth = w;
+      ctx.globalAlpha = a * Math.max(0.35, 1 - frame * 0.22);
       ctx.beginPath();
-      ctx.arc(0, -45, 34, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
+      ctx.moveTo(tail[0], tail[1]);
+      ctx.quadraticCurveTo(ctrl[0], ctrl[1], tip[0] + 4, tip[1]);
+      ctx.stroke();
+    }
+    // speed lines
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
+    ctx.globalAlpha = 0.7;
+    for (let i = -1; i <= 1; i += 2) {
       ctx.beginPath();
-      ctx.ellipse(0, -78, 28, 72, 0, 0, Math.PI * 2);
-      ctx.arc(4, -138, 15, 0, Math.PI * 2);
+      ctx.moveTo(tip[0] - 30, tip[1] + i * 14);
+      ctx.lineTo(tip[0] - 66, tip[1] + i * 18);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // dizzy stars orbiting the head
+  private static drawStunStars(ctx: CanvasRenderingContext2D, fighter: ActiveFighter, head: [number, number]) {
+    ctx.save();
+    const t = fighter.stateFrame * 0.2;
+    for (let i = 0; i < 4; i++) {
+      const a = t + (i / 4) * Math.PI * 2;
+      const sx = head[0] + Math.cos(a) * 22;
+      const sy = head[1] - 34 + Math.sin(a) * 6;
+      ctx.fillStyle = i % 2 ? '#fde047' : '#ffffff';
+      ctx.beginPath();
+      for (let k = 0; k < 10; k++) {
+        const r = k % 2 ? 2.6 : 6;
+        const aa = (k / 10) * Math.PI * 2 - Math.PI / 2;
+        ctx[k ? 'lineTo' : 'moveTo'](sx + Math.cos(aa) * r, sy + Math.sin(aa) * r);
+      }
+      ctx.closePath();
       ctx.fill();
     }
     ctx.restore();
@@ -326,205 +545,6 @@ export class CharacterRenderer {
     ctx.restore();
   }
 
-  // --- PROCEDURAL DETAILED FIGHTER BODY (FALLBACK DURING LOADING) ---
-  private static drawDetailedFighterBody(ctx: CanvasRenderingContext2D, fighter: ActiveFighter) {
-    const p = fighter.paletteIndex === 0 ? fighter.definition.palette : fighter.definition.alternatePalette;
-    const f = fighter.stateFrame;
-    const dress = fighter.definition.dressCode;
-    const isHeavyweight = dress === 'Formal';
-    const isFemale = dress === 'Smart Casual' || dress === 'White Tie';
-
-    let headX = 0, headY = -140;
-    let chestX = 0, chestY = -98;
-    let hipX = 0, hipY = -64;
-    let rKneeX = -14, rKneeY = -32, rFootX = -20, rFootY = 0;
-    let rElbowX = -18, rElbowY = -98, rHandX = -22, rHandY = -96;
-    let lKneeX = 16, lKneeY = -32, lFootX = 20, lFootY = 0;
-    let lElbowX = 24, lElbowY = -98, lHandX = 30, lHandY = -102;
-
-    const breath = Math.sin(f * 0.12) * 2.5;
-    chestY += breath;
-    headY += breath;
-
-    this.drawAthleticArm(ctx, chestX - 4, chestY - 14, rElbowX, rElbowY, rHandX, rHandY, p.primary, p.skin, isHeavyweight ? 13 : 11, true, dress);
-    this.drawAthleticLeg(ctx, hipX - 6, hipY, rKneeX, rKneeY, rFootX, rFootY, p.secondary, p.accent, isHeavyweight ? 16 : 14, isFemale);
-    this.drawAthleticTorso(ctx, chestX, chestY, hipX, hipY, dress, p, f, isHeavyweight, isFemale);
-    this.drawHumanHeadAndFace(ctx, headX, headY, dress, p, isHeavyweight, isFemale, f);
-    this.drawAthleticLeg(ctx, hipX + 6, hipY, lKneeX, lKneeY, lFootX, lFootY, p.secondary, p.accent, isHeavyweight ? 17 : 15, isFemale);
-    this.drawAthleticArm(ctx, chestX + 6, chestY - 12, lElbowX, lElbowY, lHandX, lHandY, p.primary, p.skin, isHeavyweight ? 14 : 12, false, dress);
-  }
-
-  // --- HUMAN HEAD, REALISTIC FACE & STYLED HAIR ---
-  private static drawHumanHeadAndFace(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    dress: string,
-    p: { primary: string; secondary: string; accent: string; skin: string; hair: string; details: string },
-    isHeavyweight: boolean,
-    _isFemale: boolean,
-    frame: number
-  ) {
-    ctx.save();
-    ctx.translate(x, y);
-
-    ctx.fillStyle = p.skin;
-    ctx.beginPath();
-    ctx.moveTo(-6, 14); ctx.lineTo(6, 14);
-    ctx.lineTo(isHeavyweight ? 10 : 8, 28); ctx.lineTo(isHeavyweight ? -10 : -8, 28);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = p.skin;
-    ctx.beginPath();
-    ctx.moveTo(-12, -10);
-    ctx.bezierCurveTo(-15, 6, isHeavyweight ? -13 : -11, 16, 0, isHeavyweight ? 19 : 17);
-    ctx.bezierCurveTo(isHeavyweight ? 13 : 11, 16, 15, 6, 12, -10);
-    ctx.bezierCurveTo(12, -22, -12, -22, -12, -10);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(3, -5, 8, 4.5);
-    ctx.fillStyle = '#0f172a'; ctx.fillRect(5, -4, 4.5, 3.5);
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(7, -5, 2, 2);
-
-    ctx.strokeStyle = p.hair;
-    ctx.lineWidth = isHeavyweight ? 3 : 2.4;
-    ctx.beginPath();
-    ctx.moveTo(1, -8); ctx.lineTo(12, -5.5);
-    ctx.stroke();
-
-    ctx.fillStyle = p.hair;
-    if (dress === 'Smart Casual') {
-      ctx.beginPath();
-      ctx.arc(0, -7, 15, Math.PI, Math.PI * 2);
-      ctx.lineTo(15, 4); ctx.lineTo(-13, 3);
-      ctx.closePath();
-      ctx.fill();
-      const ponySwing = Math.sin(frame * 0.16) * 4;
-      ctx.beginPath();
-      ctx.moveTo(-6, -15);
-      ctx.quadraticCurveTo(-28 + ponySwing, -22, -34 + ponySwing * 1.5, 12);
-      ctx.quadraticCurveTo(-26 + ponySwing, 28, -22, 36);
-      ctx.quadraticCurveTo(-24, 18, -13, -7);
-      ctx.fill();
-    } else {
-      ctx.beginPath();
-      ctx.arc(0, -7, 16, Math.PI, Math.PI * 2);
-      ctx.lineTo(16, -2); ctx.lineTo(21, -8);
-      ctx.lineTo(5, -28); ctx.lineTo(-17, -5);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    ctx.restore();
-  }
-
-  // --- ATHLETIC TORSO & REALISTIC TAILORED ATTIRE ---
-  private static drawAthleticTorso(
-    ctx: CanvasRenderingContext2D,
-    cx: number, cy: number,
-    hx: number, hy: number,
-    dress: string,
-    p: { primary: string; secondary: string; accent: string; skin: string; hair: string; details: string },
-    frame: number,
-    isHeavyweight: boolean,
-    isFemale: boolean
-  ) {
-    ctx.save();
-    const shoulderWidth = isHeavyweight ? 25 : (isFemale ? 18 : 21);
-    const waistWidth = isFemale ? 12 : (isHeavyweight ? 18 : 14);
-
-    ctx.fillStyle = p.primary;
-    ctx.beginPath();
-    ctx.moveTo(cx - shoulderWidth, cy - 24);
-    ctx.lineTo(cx + shoulderWidth, cy - 24);
-    ctx.lineTo(hx + waistWidth, hy + 4);
-    ctx.lineTo(hx - waistWidth, hy + 4);
-    ctx.closePath();
-    ctx.fill();
-
-    if (dress === 'Smart Casual') {
-      ctx.fillStyle = '#f8fafc';
-      ctx.fillRect(cx - 8, cy - 24, 16, 32);
-      ctx.fillStyle = p.skin;
-      ctx.beginPath();
-      ctx.moveTo(cx - 5, cy - 24); ctx.lineTo(cx + 5, cy - 24); ctx.lineTo(cx, cy - 10);
-      ctx.fill();
-    }
-
-    ctx.restore();
-  }
-
-  // --- ATHLETIC MUSCULAR ARM WITH WRAPS / GLOVES ---
-  private static drawAthleticArm(
-    ctx: CanvasRenderingContext2D,
-    sx: number, sy: number,
-    ex: number, ey: number,
-    hx: number, hy: number,
-    sleeveColor: string,
-    skinColor: string,
-    width: number,
-    isRear: boolean,
-    dress: string
-  ) {
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.strokeStyle = sleeveColor;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
-    ctx.stroke();
-
-    const isBareForearm = dress === 'Casual' || dress === 'Semi Formal';
-    ctx.strokeStyle = isBareForearm ? skinColor : sleeveColor;
-    ctx.lineWidth = width * 0.9;
-    ctx.beginPath();
-    ctx.moveTo(ex, ey); ctx.lineTo(hx, hy);
-    ctx.stroke();
-
-    ctx.fillStyle = dress === 'Formal' ? '#262626' : (dress === 'White Tie' ? '#ffffff' : skinColor);
-    ctx.beginPath();
-    ctx.arc(hx, hy, width * 0.68, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }
-
-  // --- ATHLETIC LEG ---
-  private static drawAthleticLeg(
-    ctx: CanvasRenderingContext2D,
-    hx: number, hy: number,
-    kx: number, ky: number,
-    fx: number, fy: number,
-    trouserColor: string,
-    shoeColor: string,
-    width: number,
-    isFemale: boolean
-  ) {
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.strokeStyle = trouserColor;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    ctx.moveTo(hx, hy); ctx.lineTo(kx, ky);
-    ctx.stroke();
-
-    ctx.lineWidth = width * (isFemale ? 0.8 : 0.86);
-    ctx.beginPath();
-    ctx.moveTo(kx, ky); ctx.lineTo(fx, fy - 6);
-    ctx.stroke();
-
-    ctx.fillStyle = shoeColor;
-    ctx.beginPath();
-    ctx.roundRect(fx - 12, fy - 9, 24, 9, 2);
-    ctx.fill();
-
-    ctx.restore();
-  }
 
   // --- MARTIAL ARTS STRIKE IMPACT EFFECTS ---
   private static drawMartialStrikeFX(

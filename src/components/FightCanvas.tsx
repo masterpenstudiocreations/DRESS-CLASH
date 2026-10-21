@@ -38,6 +38,7 @@ export const FightCanvas: React.FC<FightCanvasProps> = ({
 
   // Training lab states
   const [dummyGuard, setDummyGuard] = useState<'none' | 'all' | 'random'>('none');
+  const [, setRenderTrigger] = useState<boolean>(false);
 
   // Input States
   const p1Inputs = useRef<InputState>({
@@ -294,6 +295,18 @@ export const FightCanvas: React.FC<FightCanvasProps> = ({
           >
             <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> Hitbox Overlay</span>
             <span className="font-bold">{showHitboxes ? 'ON' : 'OFF'}</span>
+          </button>
+          <button
+            onClick={() => {
+              CharacterRenderer.useIllustratedSprites = !CharacterRenderer.useIllustratedSprites;
+              setRenderTrigger(prev => !prev);
+            }}
+            className="px-2.5 py-1 rounded flex items-center justify-between text-[11px] bg-neutral-900 text-neutral-300 hover:bg-neutral-800 border border-neutral-800 transition-colors cursor-pointer"
+          >
+            <span>Estilo:</span>
+            <span className="font-bold text-amber-300">
+              {CharacterRenderer.useIllustratedSprites ? 'ILUSTRADO HD' : 'RIG PIXEL-ART IK'}
+            </span>
           </button>
           <div className="text-[10px] text-neutral-400 space-y-0.5 pt-1">
             <div>1P State: <span className="text-amber-300 font-bold">{engineRef.current.p1.state}</span></div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { sound } from '../audio/soundEngine';
 import { X, Volume2, Monitor, BookOpen, Shirt, MapPin, Swords } from 'lucide-react';
 import { STAGES } from '../data/stageData';
+import { CharacterRenderer } from '../engine/characterRenderer';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -32,6 +33,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     sound.setVolumes(bgmVol, val);
     sound.playLightHit();
   };
+
+  const [useIllustrated, setUseIllustrated] = useState<boolean>(CharacterRenderer.useIllustratedSprites);
 
   return (
     <div className="absolute inset-0 z-50 bg-neutral-950/85 backdrop-blur-md flex items-center justify-center p-6 select-none animate-fadeIn">
@@ -200,6 +203,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {activeTab === 'audio' && (
             <div className="space-y-4">
+              <div className="bg-neutral-950/80 p-3 rounded-lg border border-neutral-800 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-white block">Motor Gráfico de Peleadores</span>
+                  <span className="text-[10px] text-neutral-400">
+                    {useIllustrated ? 'Arte Digital Ilustrado HD (Sprites Obra Maestra)' : 'Rig Pixel-Art Neo Geo (Animación Esquelética IK)'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    sound.playMenuBeep(false);
+                    const next = !useIllustrated;
+                    setUseIllustrated(next);
+                    CharacterRenderer.useIllustratedSprites = next;
+                  }}
+                  className={`px-3 py-1.5 rounded text-xs font-mono font-bold border transition-colors cursor-pointer ${
+                    useIllustrated ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  }`}
+                >
+                  <Swords className="w-3.5 h-3.5 inline mr-1" />
+                  {useIllustrated ? 'ILUSTRADO HD' : 'RIG PIXEL-ART IK'}
+                </button>
+              </div>
+
               <div className="bg-neutral-950/80 p-3 rounded-lg border border-neutral-800 flex items-center justify-between">
                 <div>
                   <span className="font-bold text-white block">Filtro CRT Scanlines</span>
