@@ -82,6 +82,7 @@ export interface FighterDefinition {
     taunt: string;
   };
   portraitUrl?: string;
+  spriteUrl?: string;
   spriteSliceIndex?: number;
   spriteSheetUrl?: string;
   spriteCrop?: {

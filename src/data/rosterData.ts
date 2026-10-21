@@ -42,10 +42,9 @@ export const INITIAL_ROSTER: FighterDefinition[] = [
       win: ['Muy lento para el asfalto.', '¡El estilo urbano nunca pasa de moda!'],
       taunt: '¡Vamos, muévete más rápido!'
     },
-    portraitUrl: '/src/assets/images/portrait_ren_cruz_1792534703363.jpg',
+    portraitUrl: '/src/assets/images/fighter_ren_cruz_1792582265294.jpg',
+    spriteUrl: '/assets/sprites/fighter_ren_cruz.png',
     spriteSliceIndex: 0,
-    spriteSheetUrl: '/assets/aistudio/image_81955635.png',
-    spriteCrop: { sx: 0, sy: 180, sWidth: 256, sHeight: 655, baselineY: 650 },
     moves: [
       {
         id: 'ren_5a',
@@ -330,10 +329,9 @@ export const INITIAL_ROSTER: FighterDefinition[] = [
       win: ['Pura geometría en movimiento.', 'Impecable y sin arrugar la tela.'],
       taunt: '¿Eso fue todo tu cálculo?'
     },
-    portraitUrl: '/src/assets/images/portrait_elena_rostova_1792534702554.jpg',
+    portraitUrl: '/src/assets/images/fighter_elena_rostova_1792582282404.jpg',
+    spriteUrl: '/assets/sprites/fighter_elena_rostova.png',
     spriteSliceIndex: 1,
-    spriteSheetUrl: '/assets/aistudio/image_81955635.png',
-    spriteCrop: { sx: 256, sy: 180, sWidth: 256, sHeight: 655, baselineY: 650 },
     moves: [
       {
         id: 'elena_5a',
@@ -618,10 +616,9 @@ export const INITIAL_ROSTER: FighterDefinition[] = [
       win: ['Eficiencia sin desperdicio de energía.', 'La táctica siempre vence al caos.'],
       taunt: 'Cometes demasiados errores innecesarios.'
     },
-    portraitUrl: '/src/assets/images/portrait_marcus_vance_1792534717489.jpg',
+    portraitUrl: '/src/assets/images/fighter_marcus_vance_1792582303227.jpg',
+    spriteUrl: '/assets/sprites/fighter_marcus_vance.png',
     spriteSliceIndex: 2,
-    spriteSheetUrl: '/assets/aistudio/image_81955635.png',
-    spriteCrop: { sx: 512, sy: 180, sWidth: 256, sHeight: 655, baselineY: 650 },
     moves: [
       {
         id: 'marcus_5a',
@@ -906,10 +903,9 @@ export const INITIAL_ROSTER: FighterDefinition[] = [
       win: ['Fuerza, solvencia y resultados.', 'Una inversión sin riesgo.'],
       taunt: 'Tus golpes ni siquiera arrugan mi solapa.'
     },
-    portraitUrl: '/src/assets/images/portrait_dmitri_sterling_1792534703966.jpg',
+    portraitUrl: '/src/assets/images/fighter_dmitri_sterling_1792582317994.jpg',
+    spriteUrl: '/assets/sprites/fighter_dmitri_sterling.png',
     spriteSliceIndex: 3,
-    spriteSheetUrl: '/assets/aistudio/image_81955635.png',
-    spriteCrop: { sx: 768, sy: 180, sWidth: 256, sHeight: 655, baselineY: 650 },
     moves: [
       {
         id: 'dmitri_5a',
@@ -1194,10 +1190,9 @@ export const INITIAL_ROSTER: FighterDefinition[] = [
       win: ['Un cierre digno de los aplausos.', 'Ni un solo pliegue fuera de lugar.'],
       taunt: '¿Esa es toda su finura?'
     },
-    portraitUrl: '/src/assets/images/portrait_julian_montfort_1792534703281.jpg',
+    portraitUrl: '/src/assets/images/fighter_julian_montfort_1792582332189.jpg',
+    spriteUrl: '/assets/sprites/fighter_julian_montfort.png',
     spriteSliceIndex: 4,
-    spriteSheetUrl: '/assets/aistudio/image_81955635.png',
-    spriteCrop: { sx: 1024, sy: 180, sWidth: 256, sHeight: 655, baselineY: 650 },
     moves: [
       {
         id: 'julian_5a',
@@ -1482,10 +1477,9 @@ export const INITIAL_ROSTER: FighterDefinition[] = [
       win: ['Sumisión consumada con absoluto decoro.', 'Ni una gota de sudor manchó el satén.'],
       taunt: 'Su técnica carece de linaje.'
     },
-    portraitUrl: '/src/assets/images/portrait_valerie_chevalier_1792534718250.jpg',
+    portraitUrl: '/src/assets/images/fighter_valerie_chevalier_1792582345718.jpg',
+    spriteUrl: '/assets/sprites/fighter_valerie_chevalier.png',
     spriteSliceIndex: 5,
-    spriteSheetUrl: '/assets/aistudio/image_81955635.png',
-    spriteCrop: { sx: 1280, sy: 180, sWidth: 256, sHeight: 655, baselineY: 650 },
     moves: [
       {
         id: 'valerie_5a',
@@ -1770,10 +1764,9 @@ export const INITIAL_ROSTER: FighterDefinition[] = [
       win: ['Un trago amargo para tu orgullo.', 'Elegancia, ritmo y letalidad.'],
       taunt: '¿Eso es todo lo que tienes para ofrecer esta noche?'
     },
-    portraitUrl: '/src/assets/images/fighter_coctel_mateo_1792536012428.jpg',
+    portraitUrl: '/src/assets/images/fighter_mateo_valencia_1792582357508.jpg',
+    spriteUrl: '/assets/sprites/fighter_mateo_valencia.png',
     spriteSliceIndex: 6,
-    spriteSheetUrl: '/src/assets/images/fighter_coctel_mateo_1792536012428.jpg',
-    spriteCrop: { sx: 70, sy: 140, sWidth: 580, sHeight: 920, baselineY: 910 },
     moves: [
       {
         id: 'camille_5a',
